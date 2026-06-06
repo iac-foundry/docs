@@ -1,0 +1,17 @@
+---
+- name: Compose identity platform (Vault + OIDC auth backend)
+  hosts: identity
+  become: true
+
+  pre_tasks:
+    - name: Resolve Vault OIDC client secret (platform layer)
+      ansible.builtin.set_fact:
+        vault_integration_oidc_client_secret: "{{ lookup('ansible.builtin.env', 'VAULT_OIDC_CLIENT_SECRET') }}"
+      no_log: true
+      tags: [always]
+
+  roles:
+    # Base component — stands up Vault, knows nothing about which IdP (if any) wires into it.
+    - role: blueprints.vault.container_server
+    # Optional, opt-in integration — configures an OIDC auth backend against an existing IdP.
+    - role: blueprints.vault_integrations.oidc_auth

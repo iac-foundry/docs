@@ -1,0 +1,20 @@
+---
+# CI platform — Org A style menu: Jenkins + Vault auth + Authentik SSO.
+# Versions are PINNED (BLUEPRINTS_RELEASE_STRATEGY.md §4).
+collections:
+  # Blueprints components + integrations (git-source channel; pin a tag in real use).
+  - name: blueprints.jenkins
+    source: https://github.com/iac-foundry/ansible-collection-jenkins.git
+    type: git
+    version: v0.1.0
+  - name: blueprints.jenkins_integrations
+    source: https://github.com/iac-foundry/ansible-collection-jenkins_integrations.git
+    type: git
+    version: v0.1.0
+  - name: blueprints.common
+    source: https://github.com/iac-foundry/ansible-collection-common.git
+    type: git
+    version: v0.1.0
+  # Secret retrieval is a PLATFORM dependency, never a collection dependency (LADR-003).
+  - name: community.hashi_vault
+    version: ">=6.0.0"

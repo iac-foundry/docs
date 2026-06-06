@@ -1,0 +1,15 @@
+---
+# Identity platform — Vault + an OIDC auth backend against the org's IdP.
+collections:
+  - name: blueprints.vault
+    source: https://github.com/iac-foundry/ansible-collection-vault.git
+    type: git
+    version: v0.1.0
+  - name: blueprints.vault_integrations
+    source: https://github.com/iac-foundry/ansible-collection-vault_integrations.git
+    type: git
+    version: v0.1.0
+  - name: blueprints.common
+    source: https://github.com/iac-foundry/ansible-collection-common.git
+    type: git
+    version: v0.1.0

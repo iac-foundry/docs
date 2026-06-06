@@ -1,0 +1,42 @@
+---
+# CI platform composition. This playbook is the ONLY place composition happens
+# (BLUEPRINTS_DESIGN_PRINCIPLES.md §5). Secrets are resolved HERE and passed into
+# roles as variables (LADR-003); the roles never retrieve them.
+- name: Compose CI platform (Jenkins + Vault auth + Authentik SSO)
+  hosts: ci
+  become: true
+
+  pre_tasks:
+    - name: Resolve Jenkins admin token from Vault (platform layer)
+      ansible.builtin.set_fact:
+        jenkins_server_admin_token: >-
+          {{ lookup('community.hashi_vault.vault_kv2_get',
+                    'platform/ci/jenkins',
+                    engine_mount_point='kv',
+                    url=platform_vault_addr,
+                    auth_method='approle',
+                    role_id=platform_vault_role_id,
+                    secret_id=platform_vault_secret_id).secret.admin_token }}
+      no_log: true
+      tags: [always]
+
+    - name: Resolve Authentik client secret from Vault (platform layer)
+      ansible.builtin.set_fact:
+        jenkins_integration_authentik_client_secret: >-
+          {{ lookup('community.hashi_vault.vault_kv2_get',
+                    'platform/ci/jenkins-sso',
+                    engine_mount_point='kv',
+                    url=platform_vault_addr,
+                    auth_method='approle',
+                    role_id=platform_vault_role_id,
+                    secret_id=platform_vault_secret_id).secret.client_secret }}
+      no_log: true
+      tags: [always]
+
+  roles:
+    # Base component — deploys Jenkins, knows nothing about SSO or Vault.
+    - role: blueprints.jenkins.container_server
+    - role: blueprints.jenkins.job_dsl
+    # Optional, opt-in integrations — wire Jenkins to peers that already exist.
+    - role: blueprints.jenkins_integrations.authentik_sso
+    - role: blueprints.jenkins_integrations.vault_auth

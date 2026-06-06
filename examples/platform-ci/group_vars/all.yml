@@ -1,0 +1,26 @@
+---
+# ---------------------------------------------------------------------------
+# Org-specific values live HERE, in the platform — never in the collections.
+# ---------------------------------------------------------------------------
+
+# Jenkins component (common server interface)
+jenkins_server_image: "jenkins/jenkins:2.541.3-lts-jdk21"
+jenkins_server_http_port: 8080
+jenkins_server_https_port: 8443
+jenkins_server_data_dir: "/var/lib/jenkins"
+# jenkins_server_admin_token is resolved at runtime in site.yml (do not hardcode)
+
+# Authentik SSO integration (this org happens to use Authentik; swapping to Keycloak
+# would be a different integration role + vars, with NO change to blueprints.jenkins)
+jenkins_integration_authentik_endpoint: "https://sso.example.internal/application/o/jenkins/"
+jenkins_integration_authentik_client_id: "jenkins"
+# jenkins_integration_authentik_client_secret resolved at runtime in site.yml
+
+# Vault auth integration
+jenkins_integration_vault_endpoint: "https://vault.example.internal:8200"
+
+# Platform-layer Vault connection (used by community.hashi_vault in site.yml).
+# These are platform variables, supplied by the operator / CI, never shipped in a collection.
+platform_vault_addr: "https://vault.example.internal:8200"
+platform_vault_role_id: "{{ lookup('ansible.builtin.env', 'PLATFORM_VAULT_ROLE_ID') }}"
+platform_vault_secret_id: "{{ lookup('ansible.builtin.env', 'PLATFORM_VAULT_SECRET_ID') }}"

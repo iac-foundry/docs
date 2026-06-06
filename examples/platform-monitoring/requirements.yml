@@ -1,0 +1,11 @@
+---
+# Monitoring platform — Graylog only. No Jenkins, no Vault required.
+collections:
+  - name: blueprints.graylog
+    source: https://github.com/iac-foundry/ansible-collection-graylog.git
+    type: git
+    version: v0.1.0
+  - name: blueprints.common
+    source: https://github.com/iac-foundry/ansible-collection-common.git
+    type: git
+    version: v0.1.0

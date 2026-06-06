@@ -1,0 +1,12 @@
+---
+graylog_server_image: "graylog/graylog:6.1"
+graylog_server_http_bind: "0.0.0.0:9000"
+graylog_server_data_dir: "/var/lib/graylog"
+# graylog_server_password_secret resolved at runtime in site.yml (or injected by CI)
+
+graylog_inputs_config:
+  syslog_udp:
+    port: 1514
+graylog_pipelines_config:
+  geoip:
+    enabled: true

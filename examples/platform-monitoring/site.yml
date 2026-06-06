@@ -1,0 +1,16 @@
+---
+- name: Compose monitoring platform (Graylog)
+  hosts: monitoring
+  become: true
+
+  pre_tasks:
+    - name: Resolve Graylog password secret (platform layer; supply via CI or a secret backend)
+      ansible.builtin.set_fact:
+        graylog_server_password_secret: "{{ lookup('ansible.builtin.env', 'GRAYLOG_PASSWORD_SECRET') }}"
+      no_log: true
+      tags: [always]
+
+  roles:
+    - role: blueprints.graylog.container_server
+    - role: blueprints.graylog.inputs
+    - role: blueprints.graylog.pipelines
