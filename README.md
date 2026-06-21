@@ -4,6 +4,10 @@ Org-neutral, self-contained documentation for the `blueprints.*` composable plat
 collection framework. Any organisation may adopt this framework and mirror these docs
 without edits.
 
+## New to iac-foundry?
+
+👉 **[AGENTS.md](AGENTS.md)** — Fast navigation guide. Find the right docs based on what you're building (implementing a collection, reviewing a PR, composing a platform, etc.).
+
 ## Start here
 
 - **[design/BLUEPRINTS_DESIGN_PRINCIPLES.md](design/BLUEPRINTS_DESIGN_PRINCIPLES.md)** — the anchor.
