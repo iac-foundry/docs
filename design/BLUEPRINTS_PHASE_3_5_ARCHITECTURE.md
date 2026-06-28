@@ -1,33 +1,72 @@
 # Vernify Phase 3-5 Technical Architecture Design
 
-**Status:** Draft
-**Date:** 27 June 2026
+**Status:** Revised Draft
+**Date:** 28 June 2026 (revised from 27 June 2026)
 **Owner:** Platform Engineering
 **Context:** Stage 2 technical design for Vernify greenfield bootstrap (Phases 3, 4, 5)
+**Revision:** Refined naming (docker01), agent01 LXC deployment, unified bootstrap orchestration
 
 ---
 
 ## 1. Executive Summary
 
-This design translates the Structured Requirements (Stage 1) into a complete, defendable technical architecture for Phases 3–5 of the Vernify homelab bootstrap. It covers the three-phase deployment of the security core (sec01: step-ca + Vault), CI core (build01: Jenkins), and build capacity (agent01: Jenkins agent).
+This design translates the Structured Requirements (Stage 1) into a complete, defendable technical architecture for Phases 3–5 of the Vernify homelab bootstrap. It covers the three-phase deployment of the security core (sec01: step-ca + Vault), CI core (docker01: Jenkins container host), and build capacity (agent01: Jenkins agent in LXC container).
 
 ### Key architectural decisions:
 
 1. **step-ca single-tier root CA** — simplicity for small scale; sufficient for <100 hosts; migration path to multi-tier in Phase 6.
 2. **Vault file-based storage, Shamir seal** — greenfield, single-instance v1; operator manually backs up unseal keys; HA/replication added in Phase 6.
-3. **Jenkins containerized** — isolation, logging, standard deployment pattern.
-4. **Jenkins agent systemd** — low overhead, direct access to toolchain (Packer/Terraform/Ansible).
+3. **Jenkins containerized on docker01** — isolation, logging, standard deployment pattern; emphasis on dedicated container host.
+4. **Agent01 as LXC container** — lightweight compute capacity; runs Jenkins agent + Vault agent via systemd; lighter than full VM.
 5. **Auto-unseal via systemd service + script** — operator-managed keys (no cloud-auth dependency); fallback pattern (service → script).
 6. **Non-root containers** — org security preference; reduced blast radius if container compromised.
-7. **Bootstrap container ephemeral** — carries secrets on CLI only; retired after Phase 3 secret seeding.
+7. **Bootstrap orchestration unified** — single idempotent script orchestrates all three phases; auto-seeds Vault with secrets.
+8. **Canonical secret path model** — standardized KV path structure across Vernify + future consumers (IOTel, Saicom).
+
+### Architectural Principle: Design vs. Implementation
+
+**Architects describe outcomes and rationale; implementation engineers write code.**
+
+- This document specifies **WHAT** needs to be delivered and **WHY**.
+- **HOW** (code implementation) lives in `ansible-collection-*`, `terraform-*`, and `bootstrap-container` repositories.
+- Design references code by path (e.g., "see `roles/container_server/tasks/main.yml`") rather than duplicating it.
+- Exception: LADR documents may include short code snippets when illustrating specific decisions.
 
 ### Deployment timeline:
 
-- **Phase 3 (Day 1):** Terraform provisions sec01; Ansible converges step-ca + Vault + secret seeding. Operator backs up unseal keys at gate.
-- **Phase 4 (Day 2):** Terraform provisions build01; Ansible converges Jenkins + Vault AppRole wiring + Job DSL pipelines.
-- **Phase 5 (Day 3):** Terraform provisions agent01; Ansible converges Jenkins agent + Vault agent + toolchain. Bootstrap container retired.
+- **Phase 3 (Day 1):** Bootstrap script provisions sec01 VM; converges step-ca + Vault; unseals Vault; seeds all secrets. Operator backs up unseal keys at gate.
+- **Phase 4 (Day 2):** Bootstrap script provisions docker01 VM (renamed from build01); converges Jenkins container; wires Vault AppRole; seeds Job DSL pipelines.
+- **Phase 5 (Day 3):** Bootstrap script provisions agent01 LXC container; converges Jenkins agent + Vault agent; installs toolchain. Bootstrap container ready for retirement.
 
-All work is idempotent: phases can be re-run after Vault is unsealed without re-initializing Vault or repeating secret seeding. Rollback is deletion of Proxmox VM + re-run of the phase.
+All work is idempotent: phases can be re-run after Vault is unsealed without re-initializing Vault or repeating secret seeding. Rollback is deletion of Proxmox VM/LXC + re-run of the phase.
+
+---
+
+## Bootstrap Script Entry Point
+
+**Location:** `github.com/vernify/bootstrap-container/scripts/bootstrap-phase-3-5.sh`
+
+**Purpose:** Unified entry point that orchestrates all three phases (3, 4, 5) in a single idempotent script.
+
+**Usage:**
+```bash
+./scripts/bootstrap-phase-3-5.sh \
+  --proxmox-endpoint https://proxmox.vernify.internal:8006 \
+  --proxmox-password "$PROXMOX_PASSWORD" \
+  --tfc-token "$TFC_TOKEN" \
+  --step-ca-provisioner-password "$STEP_CA_PASSWORD" \
+  --jenkins-admin-token "$JENKINS_ADMIN_TOKEN"
+```
+
+**Key features:**
+- Runs from bootstrap container; coordinates Terraform + Ansible
+- Idempotent: re-run after failures; skips completed phases
+- Integrated operator gates (unseal key backup confirmation)
+- Environment-based secret injection (no hardcoded values)
+- Full error handling + rollback instructions
+- Completion summary with infrastructure status
+
+**See:** Section 4.5.3 (Bootstrap Script Model) for detailed orchestration logic.
 
 ---
 
@@ -52,10 +91,10 @@ All work is idempotent: phases can be re-run after Vault is unsealed without re-
 - Entries include: VM hostnames, service FQDNs (vault.sec01.internal, etc.)
 - Pre-flight validation: `getent hosts sec01.vernify.internal` confirms resolution
 
-**Hosts file content (all VMs):**
+**Hosts file content (all hosts):**
 ```
 192.168.22.51  sec01 sec01.vernify.internal vault vault.sec01 vault.sec01.vernify.internal
-192.168.22.52  build01 build01.vernify.internal jenkins jenkins.build01 jenkins.build01.vernify.internal
+192.168.22.52  docker01 docker01.vernify.internal jenkins jenkins.docker01 jenkins.docker01.vernify.internal
 192.168.22.53  agent01 agent01.vernify.internal
 ```
 
@@ -79,26 +118,28 @@ All work is idempotent: phases can be re-run after Vault is unsealed without re-
                     ┌──────────────────┼──────────────────┐
                     │                  │                  │
         ┌───────────▼────────┐ ┌─────▼──────────┐ ┌────▼──────────┐
-        │      sec01 VM      │ │   build01 VM   │ │  agent01 VM    │
-        │  (4vCPU/8GB RAM)   │ │ (4vCPU/8GB RAM)│ │ (4vCPU/8GB RAM)│
+        │      sec01 VM      │ │  docker01 VM   │ │ agent01 LXC    │
+        │  (8vCPU/16GB RAM)  │ │ (4vCPU/8GB RAM)│ │(2vCPU/4GB RAM) │
         │ IP: 192.168.22.51  │ │ 192.168.22.52  │ │ 192.168.22.53  │
         └──────────┬────────┬┘ └────────┬───────┘ └────────┬───────┘
                    │        │           │                  │
         ┌──────────▼─┐  ┌──▼──┐     ┌──▼──┐           ┌───▼────┐
-        │  step-ca   │  │Vault│     │Jens │           │ Jkins  │
-        │ Container  │  │cont │     │cont │           │  agent │
+        │  step-ca   │  │Vault│     │Jkins│           │ Jkins  │
+        │ Container  │  │cont │     │cont │           │ agent  │
         │ (non-root) │  │(nr) │     │(nr) │           │systemd │
-        └────────────┘  └─────┘     └─────┘           └────────┘
-                                      │
-                          ┌───────────┴───────────┐
-                          │                       │
-                    ┌─────▼────┐           ┌─────▼────┐
-                    │AppRole:  │           │AppRole:  │
-                    │Jenkins   │           │Agents    │
-                    │(role_id+ │           │(role_id+ │
-                    │secret_id)│           │secret_id)│
+        └────────────┘  └─────┘     └─────┘           │        │
+                                      │                │ + Vault│
+                          ┌───────────┴───────────┐   │ agent  │
+                          │                       │   │systemd │
+                    ┌─────▼────┐           ┌─────▼────┴────────┘
+                    │AppRole:  │           │AppRole:
+                    │Jenkins   │           │Agents
+                    │(role_id+ │           │(role_id+
+                    │secret_id)│           │secret_id)
                     └──────────┘           └──────────┘
 ```
+
+**Note:** agent01 runs in LXC container (lightweight) on Proxmox, not as full VM. Still has static IP 192.168.22.53/24 and systemd services.
 
 ### 2.2 Component Descriptions
 
@@ -110,20 +151,25 @@ All work is idempotent: phases can be re-run after Vault is unsealed without re-
 - **Data volumes:** step-ca root cert + config, Vault encrypted storage (file backend), unseal script
 - **Network:** Internal only (no public access); DNS name `sec01.vernify.internal`
 
-#### **build01: CI Core VM**
+#### **docker01: Container Host VM**
 - **Specs:** 4 vCPU, 8 GB RAM, 50 GB disk, static IP 192.168.22.52/24
+- **Purpose:** Dedicated container host for Jenkins (and future services)
 - **Services:**
   - **Jenkins container** (CI pipelines, AppRole auth to Vault)
   - **systemd services:** none (all orchestration runs via Jenkins jobs)
-- **Network:** DNS `build01.vernify.internal`, HTTPS only (TLS from step-ca)
+- **Network:** DNS `docker01.vernify.internal`, HTTPS only (TLS from step-ca)
+- **Rationale:** Emphasizes docker01's role as container host (not generic "build" system); supports scaling container workloads in Phase 6.
 
-#### **agent01: Build Capacity VM**
-- **Specs:** 4 vCPU, 8 GB RAM, 50 GB disk, static IP 192.168.22.53/24
+#### **agent01: Build Capacity (LXC Container)**
+- **Specs:** 2 vCPU, 4 GB RAM, 20 GB disk, static IP 192.168.22.53/24, runs in LXC on Proxmox
+- **Purpose:** Lightweight build agent; lower overhead than full VM
 - **Services:**
-  - **Jenkins agent systemd** (connects to build01 via JNLP)
-  - **Vault agent systemd** (pulls secrets + certs from Vault)
-  - **Toolchain:** Packer, Terraform, Ansible (host-installed, not containerized)
-- **Network:** DNS `agent01.vernify.internal`; communicates with build01 (Jenkins) + sec01 (Vault)
+  - **Jenkins agent systemd** (connects to docker01 via JNLP, port 50000/TCP)
+  - **Vault agent systemd** (pulls secrets + certs from Vault, auto-renews)
+  - **Toolchain:** Packer, Terraform, Ansible (host-installed in LXC, not containerized)
+- **Network:** DNS `agent01.vernify.internal`; communicates with docker01 (Jenkins, port 50000) + sec01 (Vault, port 8200)
+- **Rationale:** LXC provides process isolation + network namespace without full VM overhead; sufficient for single-threaded job execution; can scale horizontally (Phase 6 adds agent02, agent03, etc.)
+- **Deployment:** terraform-agent01-deploy provisions LXC container (not VM); Ansible converges services inside LXC
 
 #### **bootstrap-container (Phase 0, ephemeral)**
 - **Role:** Stand up Proxmox VMs and secret seeding; retired after Phase 3.
@@ -695,29 +741,52 @@ output "sec01_hostname" {
 
 **Provisioner note:** After VM is created, bootstrap container runs Ansible to converge services (step-ca, Vault).
 
-### 4.2 terraform-build01-deploy
+### 4.2 terraform-docker01-deploy
 
-**Repository:** `github.com/vernify/terraform-build01-deploy`
-**Purpose:** Provision build01 VM.
+**Repository:** `github.com/vernify/terraform-docker01-deploy` (formerly terraform-build01-deploy)
+**Purpose:** Provision docker01 container host VM.
+**Rationale for rename:** Emphasizes docker01's role as dedicated container host (supports scaling container workloads in Phase 6).
 
 **Identical pattern to terraform-sec01-deploy, with:**
-- `vm_name`: `build01`
+- `vm_name`: `docker01`
 - `vm_cpu`: 4
 - `vm_memory`: 8192 (8 GB)
+- `vm_disk_size`: 50 GB
 - `ip_address`: 192.168.22.52/24
 - `tag.service`: `ci`
+- `tag.role`: `container-host`
 
 ### 4.3 terraform-agent01-deploy
 
 **Repository:** `github.com/vernify/terraform-agent01-deploy`
-**Purpose:** Provision agent01 VM.
+**Purpose:** Provision agent01 **LXC container** (not full VM).
+**Rationale:** LXC provides lightweight containerization; lower overhead than full VM; sufficient for single-threaded build jobs.
 
-**Identical pattern, with:**
-- `vm_name`: `agent01`
-- `vm_cpu`: 4
-- `vm_memory`: 8192 (8 GB)
+**LXC-Specific Configuration:**
+- `container_type`: `lxc` (or `lxd` via Proxmox LXC module)
+- `container_name`: `agent01`
+- `container_cpu`: 2 (vCPU)
+- `container_memory`: 4096 (4 GB, in MB)
+- `container_disk_size`: 20 GB
 - `ip_address`: 192.168.22.53/24
+- `gateway`: 192.168.22.1
+- `dns_servers`: (same as VMs)
 - `tag.service`: `build-capacity`
+- `tag.deployment_model`: `lxc-container`
+
+**Differences from VM repos:**
+- Uses Proxmox LXC API or `proxmox_lxc` module (not `proxmox_vm_qemu`)
+- No disk image clone; uses LXC rootfs from base container template
+- Network namespace isolated; static IP assigned via DHCP reservation or direct LXC config
+- Can be provisioned on same or different Proxmox node as sec01/docker01 (Phase 3-5 assumes same node for simplicity; Phase 6 explores multi-node agent scalability)
+
+**Bootstrap Script Integration:**
+Bootstrap script can provision agent01 LXC via:
+- Option A: Terraform (if `terraform-proxmox-lxc` module exists)
+- Option B: Ansible `proxmox_lxc` module
+- Option C: Proxmox API directly (via `proxmox` provider or Ansible)
+
+Design assumes Terraform-based provisioning (consistent with sec01/docker01). If Terraform LXC module is not ready by Phase 7a, bootstrap script falls back to Ansible provisioning task.
 
 ### 4.4 terraform-proxmox-vm Module (Dependency)
 
@@ -783,7 +852,166 @@ output "sec01_hostname" {
 - Vernify Phase 3-5 uses versions as of June 2026 (TBD: exact commits)
 - Future versions will maintain backward compatibility (semver)
 
-### 4.5.3 Hardcoded Values: Eliminated
+### 4.5.3 Bootstrap Script Model (Unified Orchestration)
+
+**Repository:** `github.com/vernify/bootstrap-container`
+**Script:** `scripts/bootstrap-phase-3-5.sh` (or equivalent in Python/Ansible)
+**Purpose:** Single idempotent orchestration script that coordinates all three phases (sec01, docker01, agent01).
+
+#### Overview
+
+After Phase 2 (Packer templates), the bootstrap script becomes the primary entry point for Phases 3-5 deployment:
+
+```bash
+# Run from bootstrap container
+./scripts/bootstrap-phase-3-5.sh \
+  --proxmox-endpoint https://proxmox.vernify.internal:8006 \
+  --proxmox-password "$PROXMOX_PASSWORD" \
+  --tfc-token "$TFC_TOKEN" \
+  --step-ca-provisioner-password "$STEP_CA_PASSWORD" \
+  --jenkins-admin-token "$JENKINS_ADMIN_TOKEN"
+```
+
+The script is **idempotent:** can be run multiple times without breaking. Each phase checks for completion markers; if a step is already done, it is skipped.
+
+#### Pre-flight Phase
+
+1. Validate Packer template exists on Proxmox
+2. Validate LXC image available for agent01 (or fallback to VM)
+3. Verify all environment variables are set
+4. Test Proxmox API connectivity
+5. Test TFC workspace exists
+6. Create inventory files for Ansible
+
+#### Phase 3: sec01 Standup & Vault Seeding
+
+```
+3a. Terraform apply terraform-sec01-deploy → sec01 VM (8vCPU, 16GB RAM, 50GB disk)
+3b. Wait for sec01 SSH reachability (retries: 10, delay: 10s)
+3c. Converge step-ca (blueprints.step_ca.container_server)
+3d. Issue TLS cert for Vault from step-ca
+3e. Converge Vault container (blueprints.vault.container_server)
+3f. Initialize Vault (blueprints.vault.init_and_unseal)
+    └─ Prints unseal keys; prompts operator to back up
+    └─ Operator confirms backup (interactive gate)
+3g. Unseal Vault (runs unseal script via Ansible)
+3h. Seed Vault with secrets (Proxmox token, TFC token, step-ca password, Jenkins token)
+3i. Create AppRoles for Jenkins + agents
+3j. Cleanup: remove root token file from sec01
+```
+
+#### Phase 4: docker01 Provisioning & Jenkins Deployment
+
+```
+4a. Terraform apply terraform-docker01-deploy → docker01 VM (4vCPU, 8GB RAM, 50GB disk)
+4b. Wait for docker01 SSH reachability
+4c. Issue TLS cert for Jenkins from step-ca
+4d. Converge Jenkins container (blueprints.jenkins.container_server)
+4e. Converge Vault plugin + AppRole config (blueprints.jenkins_integrations.vault_auth)
+4f. Seed Job DSL pipelines (Packer build, Terraform plan/apply, Ansible playbook jobs)
+4g. Verify Jenkins API responds + AppRole auth works
+```
+
+#### Phase 5: agent01 LXC Provisioning & Agent Deployment
+
+```
+5a. Terraform apply terraform-agent01-deploy → agent01 LXC container (2vCPU, 4GB RAM, 20GB disk)
+    └─ Or Ansible task if LXC provisioning is not Terraform-based
+5b. Wait for agent01 SSH reachability
+5c. Converge Jenkins agent systemd service
+    └─ Connects to docker01 via JNLP (port 50000/TCP)
+    └─ Labels: packer-build, terraform-plan, ansible-execute
+5d. Converge Vault agent systemd service
+    └─ Authenticates via AppRole
+    └─ Auto-renews secrets + TLS certs
+5e. Install toolchain: Packer, Terraform, Ansible
+5f. Verify agent01 appears in Jenkins UI as healthy node
+```
+
+#### Idempotency Strategy
+
+Each phase is guarded by a completion check:
+
+```bash
+# Phase 3a: Terraform
+terraform state show module.sec01_vm.proxmox_vm_qemu.sec01 && skip_terraform_sec01 || terraform apply
+
+# Phase 3c: step-ca
+ssh root@sec01 test -f /opt/step-ca/certs/root_ca.crt && skip_step_ca || ansible-playbook converge_step_ca.yml
+
+# Phase 3e: Vault container
+ssh root@sec01 test -f /opt/vault/data/core/keyring && skip_vault_container || ansible-playbook deploy_vault.yml
+
+# Phase 3f: Vault init
+ssh root@sec01 vault status >/dev/null 2>&1 && skip_vault_init || ansible-playbook init_vault.yml
+
+# ... repeat for all phases
+```
+
+#### Secret Seeding Strategy
+
+After Vault is unsealed in Phase 3, bootstrap script writes all secrets using the **Canonical Vault Secret Path Model** (see `docs/standards/VAULT_SECRET_PATH_MODEL.md`):
+
+```
+kv/platform/step-ca/root-ca-cert
+kv/platform/step-ca/provisioner-password
+kv/platform/vault/tls-cert
+kv/platform/vault/tls-key
+kv/saas/proxmox/api-token
+kv/saas/tfc/team-token
+kv/platform/jenkins/admin-token
+kv/platform/jenkins/approle
+kv/platform/agent01/approle
+```
+
+Secrets include required metadata (owner, usage, managed_by, rotation_period) — enforced by script validation.
+
+#### Output & Completion
+
+After all three phases complete, script outputs:
+
+```
+========== BOOTSTRAP COMPLETE ==========
+Vault:
+  - Address: https://sec01.vernify.internal:8200
+  - Status: Unsealed
+  - Secrets initialized: ✓ (9 secrets + 2 AppRoles)
+
+Jenkins:
+  - URL: https://docker01.vernify.internal:8443
+  - Admin token: [location in Vault: kv/platform/jenkins/admin-token]
+  - Pipelines: 4 (Packer, Terraform plan/apply, Ansible)
+  - Agents: 1 connected (agent01)
+
+Agent01:
+  - Status: Connected to Jenkins
+  - Vault agent: Active (auto-renewing secrets)
+  - Toolchain: Installed (Packer, Terraform, Ansible)
+
+Bootstrap container:
+  - State: Ready for retirement (all infra self-hosted)
+  - Recommendation: Archive image + delete container
+  - Cleanup: docker commit bootstrap-container archive:phase-5 && docker save ... | gzip > archive.tar.gz
+
+Recovery:
+  - Unseal keys backed up to: [operator location]
+  - Vault data backed up to: /mnt/backup/vault-data-YYYYMMDD.tar.gz
+  - All AppRole credentials stored in Vault (not in bootstrap container)
+========================================
+```
+
+#### Error Handling & Rollback
+
+If any phase fails:
+
+1. Script stops at failure point
+2. Operator is prompted with error details + remediation steps
+3. After fixing issue, re-running script continues from failure (skips completed phases)
+4. Rollback: `terraform destroy` in the failed phase's repo, fix issue, re-run script
+
+---
+
+### 4.5.4 Hardcoded Values: Eliminated
 
 **Phase 3-5 design removes all hardcoded Vernify-specific values from collection roles:**
 
@@ -908,6 +1136,7 @@ Day 1 (Phase 3):
         cert_sans:
           - "vault"
           - "vault.sec01"
+          - "vault.sec01.vernify.internal"
           - "192.168.22.51"
         cert_output_dir: "/etc/ssl/certs"
       delegate_to: sec01
@@ -1193,18 +1422,20 @@ After Phase 3 runs once, the playbook can be re-run safely:
 
 ## 6. Phase 4 Orchestration (Day 2: Jenkins Deployment)
 
-**Playbook:** `bootstrap-container/playbooks/phase-4-orchestrate.yml`
+**Note:** Phase 4 is now part of unified bootstrap script (`bootstrap-phase-3-5.sh`), not a separate playbook. However, the tasks below represent the logical sequence orchestrated by the script.
+
+**Legacy Playbook (reference):** `bootstrap-container/playbooks/phase-4-orchestrate.yml`
 
 ### 6.1 Sequence
 
 ```
 Day 2 (Phase 4):
-1. Terraform provisions build01
-2. Ansible converges step-ca.issue_certificate for Jenkins (CN=jenkins.build01.internal)
-3. Ansible converges jenkins.container_server on build01
-4. Ansible converges jenkins_integrations.vault_auth (AppRole wiring)
-5. Ansible seeds Job DSL pipelines (Packer, Terraform, Ansible jobs)
-6. Operator verifies Jenkins UI is accessible + can retrieve secrets from Vault
+1. Bootstrap script: Terraform apply terraform-docker01-deploy → docker01 VM
+2. Bootstrap script: Ansible converges step-ca.issue_certificate for Jenkins (CN=jenkins.docker01.internal)
+3. Bootstrap script: Ansible converges jenkins.container_server on docker01
+4. Bootstrap script: Ansible converges jenkins_integrations.vault_auth (AppRole wiring)
+5. Bootstrap script: Ansible seeds Job DSL pipelines (Packer, Terraform, Ansible jobs)
+6. Bootstrap script: Verify Jenkins API responds; operator verifies Jenkins UI accessible
 ```
 
 ### 6.2 Key Tasks
@@ -1214,10 +1445,10 @@ Day 2 (Phase 4):
 - name: Phase 4 — CI Core (build01)
   hosts: localhost
   tasks:
-    # Terraform: provision build01
-    - name: Run terraform apply for build01
+    # Terraform: provision docker01
+    - name: Run terraform apply for docker01
       terraform:
-        project_path: "/workspace/terraform-build01-deploy"
+        project_path: "/workspace/terraform-docker01-deploy"
         state: present
         variables:
           proxmox_ve_endpoint: "{{ proxmox_endpoint }}"
@@ -1228,9 +1459,9 @@ Day 2 (Phase 4):
           ip_address: "192.168.22.52/24"
 
     # Add to inventory
-    - name: Add build01 to inventory
+    - name: Add docker01 to inventory
       add_host:
-        name: build01
+        name: docker01
         ansible_host: "192.168.22.52"
         ansible_user: root
 
@@ -1241,13 +1472,14 @@ Day 2 (Phase 4):
       vars:
         ca_endpoint: "https://sec01.vernify.internal:9000"
         ca_fingerprint: "{{ step_ca_fingerprint }}"  # from Phase 3
-        cert_cn: "jenkins.build01.internal"
+        cert_cn: "jenkins.docker01.internal"
         cert_sans:
           - "jenkins"
-          - "jenkins.build01"
+          - "jenkins.docker01"
+          - "jenkins.docker01.vernify.internal"
           - "192.168.22.52"
         cert_output_dir: "/etc/ssl/certs"
-      delegate_to: build01
+      delegate_to: docker01
 
     # Retrieve Jenkins AppRole from Vault (via lookup)
     - name: Retrieve Jenkins AppRole credentials from Vault
@@ -1256,17 +1488,17 @@ Day 2 (Phase 4):
       no_log: true
 
     # Deploy Jenkins container
-    - name: Deploy Jenkins container on build01
+    - name: Deploy Jenkins container on docker01
       include_role:
         name: blueprints.jenkins.container_server
       vars:
         jenkins_image_tag: "lts-latest"
-        jenkins_tls_cert_path: "/etc/ssl/certs/jenkins.build01.internal.crt"
-        jenkins_tls_key_path: "/etc/ssl/certs/jenkins.build01.internal.key"
+        jenkins_tls_cert_path: "/etc/ssl/certs/jenkins.docker01.internal.crt"
+        jenkins_tls_key_path: "/etc/ssl/certs/jenkins.docker01.internal.key"
         jenkins_admin_token: "{{ jenkins_admin_token }}"
         jenkins_listen_port: 8443
         jenkins_home: "/opt/jenkins"
-      delegate_to: build01
+      delegate_to: docker01
 
     # Configure Vault plugin + AppRole auth
     - name: Wire Jenkins to Vault (AppRole)
@@ -1278,7 +1510,7 @@ Day 2 (Phase 4):
         vault_role_id: "{{ jenkins_approle.role_id }}"
         vault_secret_id: "{{ jenkins_approle.secret_id }}"
         jenkins_home: "/opt/jenkins"
-      delegate_to: build01
+      delegate_to: docker01
 
     # Seed Job DSL pipelines (via Jenkins CLI or job creation)
     - name: Seed Job DSL pipeline — Packer image build
@@ -1306,7 +1538,7 @@ Day 2 (Phase 4):
     # Verification
     - name: Verify Jenkins is accessible
       uri:
-        url: "https://build01.vernify.internal:8443/api/json"
+        url: "https://docker01.vernify.internal:8443/api/json"
         validate_certs: false
         user: admin
         password: "{{ jenkins_admin_token }}"
@@ -1317,18 +1549,18 @@ Day 2 (Phase 4):
       debug:
         msg: |
           ========== PHASE 4 COMPLETE ==========
-          build01 is now running Jenkins:
+          docker01 is now running Jenkins:
           - TLS cert issued by step-ca
           - Vault AppRole configured
           - Job DSL pipelines seeded
           
           Next steps (Phase 5):
-          1. Provision agent01
+          1. Provision agent01 (LXC container)
           2. Deploy Jenkins agent + Vault agent
           3. Install toolchain on agent01
           
           Verify:
-          - https://build01.vernify.internal:8443 (admin credentials)
+          - https://docker01.vernify.internal:8443 (admin credentials)
           - Jenkins UI shows jobs and agent01 as available node
           ====================================
 ```
@@ -1341,41 +1573,47 @@ Day 2 (Phase 4):
 
 ---
 
-## 7. Phase 5 Orchestration (Day 3: Jenkins Agent + Bootstrap Retirement)
+## 7. Phase 5 Orchestration (Day 3: Agent01 LXC + Bootstrap Retirement)
 
-**Playbook:** `bootstrap-container/playbooks/phase-5-orchestrate.yml`
+**Note:** Phase 5 is now part of unified bootstrap script (`bootstrap-phase-3-5.sh`), not a separate playbook.
+
+**Legacy Playbook (reference):** `bootstrap-container/playbooks/phase-5-orchestrate.yml`
 
 ### 7.1 Sequence
 
 ```
 Day 3 (Phase 5):
-1. Terraform provisions agent01
-2. Ansible converges Jenkins agent systemd on agent01
-3. Ansible converges Vault agent systemd on agent01
-4. Ansible installs toolchain (Packer, Terraform, Ansible)
-5. Operator verifies agent01 appears in Jenkins UI + can execute jobs
-6. Bootstrap container is archived (no longer needed)
+1. Bootstrap script: Terraform apply terraform-agent01-deploy → agent01 LXC container
+2. Bootstrap script: Ansible converges Jenkins agent systemd on agent01
+3. Bootstrap script: Ansible converges Vault agent systemd on agent01
+4. Bootstrap script: Ansible installs toolchain (Packer, Terraform, Ansible)
+5. Bootstrap script: Verify agent01 appears in Jenkins UI + Vault agent healthy
+6. Bootstrap script: Cleanup and completion summary
+7. Operator: Archive bootstrap container image; delete container
 ```
 
 ### 7.2 Key Tasks
 
 ```yaml
 ---
-- name: Phase 5 — Build Capacity (agent01)
+- name: Phase 5 — Build Capacity (agent01 LXC)
   hosts: localhost
   tasks:
-    # Terraform: provision agent01
-    - name: Run terraform apply for agent01
+    # Terraform: provision agent01 LXC
+    - name: Run terraform apply for agent01 (LXC)
       terraform:
         project_path: "/workspace/terraform-agent01-deploy"
         state: present
         variables:
           proxmox_ve_endpoint: "{{ proxmox_endpoint }}"
           proxmox_ve_password: "{{ proxmox_token }}"
-          template_name: "ubuntu-base-container-host"
-          vm_cpu: 4
-          vm_memory: 8192
+          container_type: "lxc"
+          container_name: "agent01"
+          container_cpu: 2
+          container_memory: 4096
+          container_disk_size: 20
           ip_address: "192.168.22.53/24"
+          gateway: "192.168.22.1"
 
     # Add to inventory
     - name: Add agent01 to inventory
@@ -1389,7 +1627,7 @@ Day 3 (Phase 5):
       include_role:
         name: blueprints.jenkins.agent
       vars:
-        jenkins_controller_url: "https://build01.vernify.internal:8443"
+        jenkins_controller_url: "https://docker01.vernify.internal:8443"
         jenkins_controller_username: admin
         jenkins_controller_token: "{{ jenkins_admin_token }}"
         jenkins_agent_name: "agent01"
@@ -1432,7 +1670,7 @@ Day 3 (Phase 5):
     # Verification
     - name: Verify agent01 appears in Jenkins
       uri:
-        url: "https://build01.vernify.internal:8443/api/json"
+        url: "https://docker01.vernify.internal:8443/api/json"
         validate_certs: false
         user: admin
         password: "{{ jenkins_admin_token }}"
@@ -1443,19 +1681,19 @@ Day 3 (Phase 5):
       debug:
         msg: |
           ========== PHASE 5 COMPLETE ==========
-          agent01 is now running:
-          - Jenkins agent connected to build01
-          - Vault agent pulling secrets
+          agent01 (LXC container) is now running:
+          - Jenkins agent connected to docker01
+          - Vault agent pulling secrets + auto-renewing
           - Toolchain installed (Packer, Terraform, Ansible)
           
-          Bootstrap container is no longer needed. Archive it.
+          Bootstrap container can now be archived and deleted.
           
           Verify:
           - Jenkins UI shows agent01 as healthy node
           - Run test job on agent01 (Packer, Terraform, Ansible)
           - Verify agent can pull secrets from Vault
           
-          Homelab standup complete!
+          Homelab standup complete! All infrastructure is now self-hosted.
           ====================================
 ```
 
