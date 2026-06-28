@@ -38,6 +38,34 @@ without edits.
 - [LADR-003](decisions/LADR-003-secret-retrieval-community-hashi-vault.md) — secret retrieval via
   `community.hashi_vault` at the platform layer.
 
+## Vernify Phase 3-5 (Vault + step-ca + Jenkins bootstrap)
+
+Phase 3-5 is a concrete consumer deliverable built on this framework (see
+[AGENTS.md](AGENTS.md) for the firm's stage-by-stage delivery process). The documentation for it
+is split across this repo and two repos in `vernify/` — use this table to find the right
+Diataxis-type document instead of searching:
+
+| Type | Document | Where |
+|---|---|---|
+| Explanation | [design/BLUEPRINTS_PHASE_3_5_ARCHITECTURE.md](design/BLUEPRINTS_PHASE_3_5_ARCHITECTURE.md) | this repo |
+| Explanation | [decisions/LADR-004](decisions/LADR-004-step-ca-single-tier-pki.md) — single-tier step-ca PKI | this repo |
+| Explanation | [decisions/LADR-006](decisions/LADR-006-vault-file-storage.md) — Vault file storage | this repo |
+| Explanation | [decisions/LADR-007](decisions/LADR-007-jenkins-container-agent-systemd.md) — Jenkins container/agent split | this repo |
+| Explanation | [decisions/LADR-008](decisions/LADR-008-auto-unseal-script-pattern.md) — Vault auto-unseal pattern | this repo |
+| Explanation | [decisions/LADR-009](decisions/LADR-009-non-root-containers.md) — non-root containers | this repo |
+| Explanation | [decisions/LADR-010](decisions/LADR-010-bootstrap-script-orchestration.md) — bootstrap script orchestration | this repo |
+| Reference | [reference/PHASE_3_5_INTEGRATION_GUIDE.md](reference/PHASE_3_5_INTEGRATION_GUIDE.md) — Vault/step-ca/Jenkins API & integration reference | this repo |
+| Reference | [standards/VAULT_SECRET_PATH_MODEL.md](standards/VAULT_SECRET_PATH_MODEL.md) — canonical Vault secret path model | this repo |
+| Reference | [delivery/PHASE_3_5_DELIVERY_PLAN.md](delivery/PHASE_3_5_DELIVERY_PLAN.md), [delivery/CI_CD_HEALTH_DASHBOARD.md](delivery/CI_CD_HEALTH_DASHBOARD.md) | this repo |
+| Tutorial | [`bootstrap-container/RUNBOOK.md`](https://github.com/Vernify/bootstrap-container/blob/main/RUNBOOK.md) — first-time, zero-to-bootstrapped walkthrough of Phase 0-5 | `vernify/bootstrap-container` |
+| How-to | [`roadmap/PHASE_3_5_OPERATOR_RUNBOOK.md`](https://github.com/Vernify/roadmap/blob/main/PHASE_3_5_OPERATOR_RUNBOOK.md) — day-by-day operator deployment, verification, and troubleshooting procedures | `vernify/roadmap` |
+| How-to | [`roadmap/DISASTER_RECOVERY_PROCEDURES.md`](https://github.com/Vernify/roadmap/blob/main/DISASTER_RECOVERY_PROCEDURES.md) — recovery procedures for Vault/step-ca/VM/Jenkins loss | `vernify/roadmap` |
+
+> **Note on LADR-005:** a duplicate single-tier-PKI decision record was independently drafted as
+> `LADR-005`; it has been consolidated into LADR-004 and marked Superseded. It is retained for
+> history at [decisions/LADR-005-step-ca-single-tier.md](decisions/LADR-005-step-ca-single-tier.md)
+> but new references should point to LADR-004.
+
 ## Examples
 
 Working reference implementations showing how to compose collections into complete platforms:
