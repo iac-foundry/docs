@@ -1,0 +1,154 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                   VERNIFY PHASE 3-5 DELIVERY PLAN                            ║
+║                         Quick Reference Card                                 ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+OVERVIEW
+────────────────────────────────────────────────────────────────────────────────
+Project:        Vernify Phase 3-5 Bootstrap (sec01 + docker01 + agent01)
+Total Tickets:  47
+Total Effort:   34 story days (~68 story points)
+Duration:       10 weeks (including testing + QA)
+Team Size:      8 people (peak concurrent: 5)
+
+KEY METRICS
+────────────────────────────────────────────────────────────────────────────────
+Critical Path (sequential):     ~21 days
+With parallelization:           ~14-16 days execution + 4 weeks QA
+External blockers:              1 (terraform-proxmox-vm module)
+Parallel workstreams:           5
+
+IMPLEMENTATION PHASES
+────────────────────────────────────────────────────────────────────────────────
+Phase A: Collection Scaffolding       (Weeks 1-2,   2 days,   4 points)
+Phase B: Ansible Collections          (Weeks 2-4,  13 days,  26 points)  ← CRITICAL
+Phase C: Terraform Repositories       (Weeks 3-4,   3 days,   6 points)  ← PARALLEL
+Phase D: Bootstrap & Orchestration    (Week 5,      4 days,   8 points)  ← WAITS FOR B+C
+Phase E: CI/CD & Testing              (Weeks 6-7,   3 days,   6 points)
+Phase F: Documentation & Runbooks     (Weeks 7-8,   2 days,   4 points)
+QA/Testing                            (Weeks 7-10,  4 weeks,  6 points)
+
+PARALLEL WORKSTREAMS (Can run simultaneously)
+────────────────────────────────────────────────────────────────────────────────
+Workstream 1 (Collections B):        2-3 Ansible engineers, 6 days critical path
+Workstream 2 (Terraform C):          1-2 Infra engineers, 3 days (parallel with B)
+Workstream 3 (Bootstrap D):          1 Senior architect, 4 days (waits for B+C)
+Workstream 4 (CI/CD E):              1 DevOps engineer, 3 days (can start during B)
+Workstream 5 (Docs F):               1 Tech writer, 2 days (can start during D)
+
+RESOURCE ALLOCATION
+────────────────────────────────────────────────────────────────────────────────
+• 2-3 Ansible Experts        → Collections (Phase B)
+• 1-2 Infrastructure Engr.    → Terraform (Phase C)
+• 1 DevOps/CI-CD Engr.        → GitHub Actions (Phase E)
+• 1 Senior Architect          → Bootstrap script (Phase D)
+• 1 Technical Writer          → Documentation (Phase F)
+• 1 QA Engineer               → Testing + Sign-off
+• 1 Tech Lead/PM              → Coordination + Reviews
+────────────────────────────────────────────────────────────────────────────────
+TOTAL: ~8 people (peak concurrent: 5 in weeks 3-5)
+
+CRITICAL PATH
+────────────────────────────────────────────────────────────────────────────────
+terraform-proxmox-vm (ext dep)
+    ↓
+Phase A (scaffold) [2d]
+    ↓
+Phase B (collections) [6d critical] + Phase C (terraform) [3d parallel]
+    ↓
+Phase D (bootstrap) [4d, waits for B+C]
+    ↓
+Phase E (CI/CD) [3d]
+    ↓
+Phase F (Docs) [2d]
+    ↓
+QA/Testing [4 weeks]
+    ↓
+SIGN-OFF & READY
+
+DEPENDENCIES SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+A-01 to A-04  (Scaffolding) ←────────────→ NO PREREQUISITES
+              ↓
+B-01 to B-12  (Collections) ←────────→ Depends on A (scaffolding)
+              + D-01 to D-03 (Bootstrap) ←→ Depends on B + C
+C-01 to C-06  (Terraform)   ←────────→ Depends on A + terraform-proxmox-vm
+              ↓
+E-01 to E-06  (CI/CD)       ←────────→ Depends on B (roles must exist)
+              ↓
+F-01 to F-04  (Docs)        ←────────→ Can run parallel with D + E
+
+QUALITY GATES (Go/No-Go)
+────────────────────────────────────────────────────────────────────────────────
+Gate A (Scaffolding):  ✓ All collections exist ✓ terraform-proxmox-vm verified
+Gate B (Collections):  ✓ Molecule tests pass ✓ ansible-lint passes
+Gate C (Terraform):    ✓ terraform validate passes ✓ terraform plan succeeds
+Gate D (Bootstrap):    ✓ Dry-run test passes ✓ All gates implemented
+Gate E (CI/CD):        ✓ GitHub Actions passing ✓ E2E dry-run succeeds
+Gate F (Docs):         ✓ Runbook reviewed ✓ No clarity gaps
+Gate LIVE (Testing):   ✓ Phase 3-5 deployment succeeds ✓ All services running
+
+RISK MITIGATION (Top 3)
+────────────────────────────────────────────────────────────────────────────────
+Risk 1: terraform-proxmox-vm incomplete
+  Impact:    Blocks all terraform repos (C)
+  Mitigation: Verify in A-03 immediately; escalate if incomplete
+  Contingency: Use Proxmox provider directly (no module)
+
+Risk 2: Vault init JSON parsing fails
+  Impact:    Unseal keys not captured; Phase 3 cannot unseal
+  Mitigation: Test in B-05 Molecule tests; handle version differences
+  Contingency: Manual key extraction + operator unseals manually
+
+Risk 3: Operator skips unseal key backup
+  Impact:    Vault unrecoverable if host lost
+  Mitigation: Large warning text + clear operator runbook (F-02)
+  Contingency: Recovery from external backup; Phase 6: implement KMS auto-seal
+
+DEFINITION OF DONE
+────────────────────────────────────────────────────────────────────────────────
+✅ All 47 tickets implemented + merged
+✅ All GitHub Actions workflows passing
+✅ Molecule tests pass locally + in CI
+✅ bootstrap-phase-3-5.sh runs dry-run successfully (terraform plan + ansible check)
+✅ Live Phase 3-5 deployment succeeds on Vernify infrastructure
+✅ Vault unsealed, secrets seeded, accessible
+✅ Jenkins deployed, AppRole auth working, Job DSL pipelines seeded
+✅ agent01 connected to Jenkins + toolchain installed + healthy
+✅ Operator runbook tested + team trained
+✅ Sign-off from tech lead + QA engineer + operators
+
+SUCCESS = Self-hosted infrastructure, bootstrap container retired, ready for Phase 6
+
+NEXT STEPS FOR TECH LEAD
+────────────────────────────────────────────────────────────────────────────────
+1. Assign resources to 5 workstreams
+2. Verify terraform-proxmox-vm module (A-03) — CRITICAL BLOCKER
+3. Create project board with 47 tickets in GitHub Projects
+4. Schedule kick-off meeting (brief team on phases + timeline)
+5. Schedule weekly sync (progress tracking + blocker resolution)
+
+DOCUMENT LOCATIONS
+────────────────────────────────────────────────────────────────────────────────
+Detailed Plan:      /docs/delivery/PHASE_3_5_DELIVERY_PLAN.md (80 KB, 2066 lines)
+Executive Summary:  /docs/delivery/DELIVERY_PLAN_EXECUTIVE_SUMMARY.md (14 KB, 358 lines)
+This Card:          /docs/delivery/QUICK_REFERENCE.txt
+README:             /docs/delivery/README.md
+
+TIMELINE
+────────────────────────────────────────────────────────────────────────────────
+Week 1-2:  Phase A (Scaffolding) - 2 days
+Week 2-4:  Phase B (Collections) + Phase C (Terraform) in PARALLEL - 6-13 days
+Week 4-5:  Phase D (Bootstrap) - 4 days (waits for B+C)
+Week 5-6:  Phase E (CI/CD) + Phase F (Docs) start - 3-2 days
+Week 6-9:  End-to-End Testing + QA - 4 weeks
+Week 10:   Sign-Off & Deployment Ready
+
+ESTIMATED PROJECT COMPLETION: 10 weeks (with testing + QA)
+
+════════════════════════════════════════════════════════════════════════════════
+Status: READY FOR HANDOFF
+Prepared by: Delivery Planning (Stage 6)
+Date: 28 June 2026
+Next Phase: Stage 7 Implementation
+════════════════════════════════════════════════════════════════════════════════
