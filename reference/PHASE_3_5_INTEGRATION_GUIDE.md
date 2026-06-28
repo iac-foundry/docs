@@ -102,10 +102,14 @@ kv/platform/              # Vernify infrastructure secrets
 ├── vault/                # Vault bootstrap secrets
 │   ├── unseal-keys       # 3 Shamir unseal keys (JSON array)
 │   └── root-token        # Vault root token (break-glass only)
-├── pki/                  # PKI and certificate secrets
-│   ├── root-key          # step-ca root CA private key
-│   ├── root-cert         # step-ca root CA certificate
+├── pki/                  # PKI and certificate secrets (public material only)
+│   ├── root-cert         # step-ca root CA certificate (PUBLIC; cached here for distribution)
 │   └── provisioner-creds # step-ca provisioner password
+│   # NOTE: the step-ca root CA PRIVATE KEY is never written to Vault. It is
+│   # generated and stored host-locally on sec01 at
+│   # /var/lib/step-ca/root_ca.key with mode 0600, owned by the step-ca
+│   # service user (see blueprints.step_ca.container_server role). Vault has
+│   # no copy of it and no recovery path for it today.
 ├── jenkins/              # Jenkins bootstrap secrets
 │   ├── admin-token       # Jenkins admin API token
 │   ├── admin-password    # Jenkins admin password (if needed)

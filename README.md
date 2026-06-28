@@ -58,8 +58,8 @@ Diataxis-type document instead of searching:
 | Reference | [standards/VAULT_SECRET_PATH_MODEL.md](standards/VAULT_SECRET_PATH_MODEL.md) — canonical Vault secret path model | this repo |
 | Reference | [delivery/PHASE_3_5_DELIVERY_PLAN.md](delivery/PHASE_3_5_DELIVERY_PLAN.md), [delivery/CI_CD_HEALTH_DASHBOARD.md](delivery/CI_CD_HEALTH_DASHBOARD.md) | this repo |
 | Tutorial | [`bootstrap-container/RUNBOOK.md`](https://github.com/Vernify/bootstrap-container/blob/main/RUNBOOK.md) — first-time, zero-to-bootstrapped walkthrough of Phase 0-5 | `vernify/bootstrap-container` |
-| How-to | [`roadmap/PHASE_3_5_OPERATOR_RUNBOOK.md`](https://github.com/Vernify/roadmap/blob/main/PHASE_3_5_OPERATOR_RUNBOOK.md) — day-by-day operator deployment, verification, and troubleshooting procedures | `vernify/roadmap` |
-| How-to | [`roadmap/DISASTER_RECOVERY_PROCEDURES.md`](https://github.com/Vernify/roadmap/blob/main/DISASTER_RECOVERY_PROCEDURES.md) — recovery procedures for Vault/step-ca/VM/Jenkins loss | `vernify/roadmap` |
+| How-to | `roadmap/PHASE_3_5_OPERATOR_RUNBOOK.md` — day-by-day operator deployment, verification, and troubleshooting procedures | `vernify/roadmap` (not yet version-controlled or hosted on GitHub — read from the local path) |
+| How-to | `roadmap/DISASTER_RECOVERY_PROCEDURES.md` — recovery procedures for Vault/step-ca/VM/Jenkins loss | `vernify/roadmap` (not yet version-controlled or hosted on GitHub — read from the local path) |
 
 > **Note on LADR-005:** a duplicate single-tier-PKI decision record was independently drafted as
 > `LADR-005`; it has been consolidated into LADR-004 and marked Superseded. It is retained for
