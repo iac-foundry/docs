@@ -1447,7 +1447,9 @@ Document all CI/CD workflows + create status dashboard (GitHub Actions status, t
 Document architectural decision records (LADRs 005–010) explaining key Phase 3-5 design choices.
 
 **Acceptance Criteria:**
-- [ ] LADR-005: Single-tier step-ca root CA (not multi-tier)
+- [x] Single-tier step-ca root CA (not multi-tier) — documented as **LADR-004**, not LADR-005. A
+  duplicate LADR-005 was independently drafted later, covering the same decision; it has been
+  consolidated into LADR-004 and marked Superseded (see `decisions/LADR-005-step-ca-single-tier.md`).
 - [ ] LADR-006: File-based Vault storage (not HA/Raft in v1)
 - [ ] LADR-007: Jenkins containerized, agent systemd
 - [ ] LADR-008: Auto-unseal via systemd script
@@ -1457,7 +1459,8 @@ Document architectural decision records (LADRs 005–010) explaining key Phase 3
 - [ ] Documents linked from main architecture design
 
 **Deliverables:**
-- `/docs/architecture/LADR-005.md` through `LADR-010.md`
+- `decisions/LADR-004-step-ca-single-tier-pki.md` (single-tier step-ca decision; supersedes the
+  duplicate `LADR-005-step-ca-single-tier.md`), `decisions/LADR-006.md` through `LADR-010.md`
 - Cross-referenced from main design doc (section 15)
 
 **Technical Notes:**

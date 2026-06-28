@@ -2526,15 +2526,13 @@ sudo tail -f /var/log/vault/audit.log | jq .
 
 These are the architectural decision records to be documented (not full content here, just structure):
 
-### LADR-005: Single-Tier step-ca Root CA for Small Environments
+### Single-Tier step-ca Root CA for Small Environments
 
-**Context:** Vernify is greenfield, small-scale (<100 hosts). Multi-tier PKI (root + intermediate CAs) adds complexity (intermediate renewal, revocation, trust chain depth).
-
-**Decision:** Deploy single-tier root CA (root issues all certs directly).
-
-**Rationale:** Simplicity, sufficient security for scale. Migration path exists: Phase 6 can introduce intermediate CA if needed (e.g., for customer deployments).
-
-**Consequences:** Root CA key is more frequently used (slightly higher compromise risk, but mitigated by container isolation). Intermediate tier adds operational overhead in future but not required now.
+**Decision record:** [LADR-004: Step-CA Single-Tier (Root-Only) Internal PKI](../decisions/LADR-004-step-ca-single-tier-pki.md)
+(this stub was originally drafted as "LADR-005" pending Stage 7c; the full decision was written up as
+LADR-004 and a duplicate LADR-005 was later consolidated into it — see LADR-004 for the complete
+Context, Decision, Rationale, Alternatives, and Consequences, including Vernify's concrete deployment
+parameters).
 
 ---
 

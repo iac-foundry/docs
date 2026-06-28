@@ -1,10 +1,18 @@
 # LADR-005: Single-Tier step-ca Root CA for Small Environments
 
-**Status:** Accepted
+> **Superseded by [LADR-004](LADR-004-step-ca-single-tier-pki.md).** This LADR documented the same
+> decision (single-tier, root-only step-ca PKI) independently, without the author being aware that
+> LADR-004 already covered it. The two have been consolidated: any unique operational detail from
+> this document (Vernify's concrete scale numbers, certificate-lifespan choices, the CI validation
+> approach, and the rejected external-CA/HSM alternatives) has been merged into LADR-004. This file
+> is retained for historical record per standard LADR practice — do not treat it as current. New
+> cross-references should point to LADR-004.
+
+**Status:** Superseded
 **Date:** 28 June 2026
 **Owner:** Platform Engineering
 **Supersedes:** N/A
-**Superseded By:** N/A (upgrade path to multi-tier in Phase 6)
+**Superseded By:** [LADR-004-step-ca-single-tier-pki.md](LADR-004-step-ca-single-tier-pki.md)
 **Related:** [../design/BLUEPRINTS_PHASE_3_5_ARCHITECTURE.md](../design/BLUEPRINTS_PHASE_3_5_ARCHITECTURE.md) · [LADR-004-step-ca-single-tier-pki.md](LADR-004-step-ca-single-tier-pki.md)
 
 ---

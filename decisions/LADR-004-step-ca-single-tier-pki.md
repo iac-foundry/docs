@@ -117,6 +117,20 @@ broad sudo) rather than through CA hierarchy isolation.**
 | Cons | A trust-store mutation capability is structurally a host-wide blast-radius operation (affects every process consulting the system trust store), which is the exact risk class this organisation's working agreement says must be contained or escalated to a human risk call before shipping — bundling it into this LADR would pre-empt that required human decision |
 | Reason rejected | Kept as a separate, explicitly flagged risk (R-1 in the companion design doc) requiring its own human sign-off, rather than folded into the single-tier decision where it doesn't belong architecturally anyway (trust distribution is orthogonal to root-vs-intermediate hierarchy) |
 
+### Option D — Certificate-only CA: rely on an external vendor CA instead of an internal root
+| | |
+|---|---|
+| Pros | No private root-key management at all; offloads issuance and revocation entirely to a third party (e.g. Let's Encrypt) |
+| Cons | Public CAs do not issue certificates for internal-only/non-resolvable names; rate limits (e.g. ~50 certs/registered-domain/week) are incompatible with frequent internal leaf issuance; adds a hard external-network dependency for every certificate operation, which most internal/air-gapped consumer topologies cannot accept |
+| Reason rejected | Internal-only PKI is the entire point of this collection — an adopting org that could rely on a public CA for every certificate would not need `blueprints.step_ca` in the first place |
+
+### Option E — Single-tier root key protected by a Hardware Security Module (HSM)
+| | |
+|---|---|
+| Pros | Strongest available protection against key extraction; supports the highest compliance/audit bar |
+| Cons | Meaningful cost and operational complexity; most virtualization platforms used by this framework's named consumers have no native HSM integration; disproportionate to the confirmed small-environment threat model this decision is scoped to |
+| Reason rejected | Out of scope for the validated requirement. An org with a compliance driver that specifically mandates HSM-backed key custody should treat that as a distinct, escalated requirement re-evaluated on its own merits (see Review Trigger below), not something this collection should force on every adopter by default |
+
 ## 5. Consequences
 
 - **Positive:** Unblocks Phase 3 with the smallest viable PKI implementation; consistent with the
@@ -180,6 +194,18 @@ broad sudo) rather than through CA hierarchy isolation.**
   the single-tier decision, the key-protection posture, or FR-5's "no silent host-wide trust
   *installation*" guarantee above: fetching a public cert over HTTPS is not a trust-store mutation,
   and this collection still installs nothing into any host's system trust store by default.
+- **Concrete consumer example (Vernify Phase 3-5):** The only named concrete consumer at the time of
+  this decision deploys `blueprints.step_ca` at a scale of 3 VMs (Phase 3-5), expected to grow to
+  under 50 in Phase 6 and remain under 100 hosts overall — squarely inside the small-environment
+  scale this decision is scoped to. At the platform layer, Vernify overrides the collection's 30-day
+  default leaf-certificate validity (§3/Decision 3 of the companion design doc) to a 1-year leaf
+  validity with renewal handled by Vault Cert Auth ahead of expiry, and uses a 10-year root
+  certificate validity — both are caller-side/platform-layer choices, not changes to this collection's
+  defaults or code. Vernify's CI validates the deployed CA by issuing ten leaf certificates in
+  parallel and verifying each resolves its chain back to the root, a useful concrete pattern for any
+  adopter validating their own deployment beyond what this collection's own molecule scenario covers.
+  This example is recorded here for context; it does not change the decision or its defaults, and
+  other adopters are free to choose different platform-layer validity/renewal parameters.
 - **Review trigger:** Revisit this decision if:
   - Issuance volume, environment count, or availability requirements grow past what a single
     instance comfortably serves (see the companion design doc §6 "Scaling Strategy" and Appendix C);
